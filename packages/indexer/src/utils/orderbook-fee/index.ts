@@ -8,8 +8,7 @@ import {
   supportsPaymentSplits,
   updatePaymentSplitBalance,
 } from "@/utils/payment-splits";
-
-export const FEE_RECIPIENT = "0x1208e7f7aed9d39ed25ef582b8933e4a1d0da6af";
+import { config } from "@/config/index";
 
 export const ORDERBOOK_FEE_ORDER_KINDS: OrderKind[] = [
   "alienswap",
@@ -62,7 +61,7 @@ export const attachOrderbookFee = async (
           bps: Number(params.fee),
         },
         {
-          recipient: FEE_RECIPIENT,
+          recipient: config.feeRecipient,
           bps: feeBps,
         },
         apiKey
@@ -87,11 +86,11 @@ export const attachOrderbookFee = async (
       );
     } else {
       params.fee.push(String(feeBps));
-      params.feeRecipient.push(FEE_RECIPIENT);
+      params.feeRecipient.push(config.feeRecipient);
 
       // Mark the fee as marketplace fee
       await FeeRecipients.getInstance().then((feeRecipients) =>
-        feeRecipients.create(FEE_RECIPIENT, "marketplace")
+        feeRecipients.create(config.feeRecipient, "marketplace")
       );
     }
   }
@@ -125,7 +124,7 @@ export const validateOrderbookFee = async (
 
     for (const fee of feeBreakdown) {
       if (
-        fee.recipient.toLowerCase() === FEE_RECIPIENT.toLowerCase() &&
+        fee.recipient.toLowerCase() === config.feeRecipient.toLowerCase() &&
         // Allow off-by-one values to cover any precision issues
         [fee.bps - 1, fee.bps, fee.bps + 1].includes(feeBps)
       ) {

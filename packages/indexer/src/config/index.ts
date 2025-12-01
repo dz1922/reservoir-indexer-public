@@ -25,6 +25,8 @@ export const config = {
 
   openseaChainName: process.env.OPENSEA_CHAIN_NAME,
 
+  feeRecipient: String(process.env.FEE_RECIPIENT),
+
   // When running in liquidity-only mode, all metadata processes are disabled
   ordinalsMetadataUrl: String(process.env.ORDINALS_METADATA_URL || ""),
   liquidityOnly: Boolean(Number(process.env.LIQUIDITY_ONLY)),
