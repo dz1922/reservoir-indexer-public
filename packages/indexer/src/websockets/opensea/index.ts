@@ -20,6 +20,7 @@ import { logger } from "@/common/logger";
 import { doesLockExist, redis } from "@/common/redis";
 import { now, toBuffer } from "@/common/utils";
 import { config } from "@/config/index";
+import { isCollectionFilterEnabled, isContractEnabled } from "@/config/collections";
 import { OpenseaOrderParams } from "@/orderbook/orders/seaport-v1.1";
 import { generateHash } from "@/websockets/opensea/utils";
 import { GenericOrderInfo } from "@/jobs/orderbook/utils";
@@ -77,6 +78,18 @@ if (config.doWebsocketWork && config.openSeaApiKey) {
 
         if (chainName && getOpenseaChainName() != chainName) {
           return;
+        }
+
+        // Filter by collection whitelist (if configured).
+        // OpenSea event payloads contain nft_id in format "chain/contract/tokenId"
+        if (isCollectionFilterEnabled()) {
+          const nftId = (event.payload as any)?.item?.nft_id;
+          if (nftId) {
+            const contract = nftId.split("/")[1];
+            if (contract && !isContractEnabled(contract)) {
+              return;
+            }
+          }
         }
 
         if (await isDuplicateEvent(event)) {

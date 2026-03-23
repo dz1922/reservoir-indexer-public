@@ -6,6 +6,7 @@ import { logger } from "@/common/logger";
 import { archiveProvider, backfillProvider, baseProvider } from "@/common/provider";
 import { acquireLock, redis } from "@/common/redis";
 import { config } from "@/config/index";
+import { isCollectionFilterEnabled, isContractEnabled } from "@/config/collections";
 import { EventKind, EventSubKind, getEventData } from "@/events-sync/data";
 import { EventsBatch, EventsByKind, processEventsBatchV2 } from "@/events-sync/handlers";
 import { EnhancedEvent } from "@/events-sync/handlers/utils";
@@ -564,6 +565,20 @@ export const syncEventsOnly = async (
 
   enhancedEvents = enhancedEvents.filter((e) => e) as EnhancedEvent[];
 
+  // Filter events by collection whitelist (if configured).
+  // Keep all ERC20 events (needed for price calculation) and all protocol-specific events
+  // (they are already scoped to known contract addresses). Only filter ERC721/ERC1155/cryptopunks
+  // transfer events from contracts not in the whitelist.
+  if (isCollectionFilterEnabled()) {
+    const nftEventKinds: Set<EventKind> = new Set(["erc721", "erc1155", "cryptopunks"]);
+    enhancedEvents = (enhancedEvents as EnhancedEvent[]).filter((e) => {
+      if (!nftEventKinds.has(e.kind)) {
+        return true;
+      }
+      return isContractEnabled(e.baseEventParams.address);
+    });
+  }
+
   // Process the retrieved events
   const eventsBatches = extractEventsBatches(enhancedEvents as EnhancedEvent[]);
 
@@ -725,6 +740,17 @@ export const syncEvents = async (
     .flat();
 
   enhancedEvents = enhancedEvents.filter((e) => e) as EnhancedEvent[];
+
+  // Filter events by collection whitelist (if configured)
+  if (isCollectionFilterEnabled()) {
+    const nftEventKinds: Set<EventKind> = new Set(["erc721", "erc1155", "cryptopunks"]);
+    enhancedEvents = (enhancedEvents as EnhancedEvent[]).filter((e) => {
+      if (!nftEventKinds.has(e.kind)) {
+        return true;
+      }
+      return isContractEnabled(e.baseEventParams.address);
+    });
+  }
 
   // Process the retrieved events
   const eventsBatches = extractEventsBatches(enhancedEvents as EnhancedEvent[]);
