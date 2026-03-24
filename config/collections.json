@@ -1,0 +1,17 @@
+[
+  {
+    "contract": "0xb47e3cd837ddf8e4c57f05d70ab865de6e193bbb",
+    "enabled": true,
+    "note": "CryptoPunks (original, pre-ERC721)"
+  },
+  {
+    "contract": "0xb7f7f6c52f2e2fdb1963eab30438024864c313f6",
+    "enabled": true,
+    "note": "Wrapped CryptoPunks (ERC721)"
+  },
+  {
+    "contract": "0x000000000000003607fce1ac9e043a86675c5c2f",
+    "enabled": true,
+    "note": "CryptoPunks 721 (ERC721)"
+  }
+]

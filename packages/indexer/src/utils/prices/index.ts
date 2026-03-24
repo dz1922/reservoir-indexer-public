@@ -21,6 +21,61 @@ export type Price = {
   value: string;
 };
 
+// In-memory price cache: symbol -> { usdPrice, fetchedAt }
+const PRICE_CACHE = new Map<string, { usdPrice: number; fetchedAt: number }>();
+const PRICE_CACHE_TTL_MS = 60 * 1000; // 1 minute
+
+const getAlchemyApiKey = (): string | undefined => {
+  const rpcUrl = config.baseNetworkHttpUrl || "";
+  const match = rpcUrl.match(/g\.alchemy\.com\/v2\/(.+)/);
+  return match ? match[1] : undefined;
+};
+
+const fetchPriceFromAlchemy = async (symbol: string): Promise<number | undefined> => {
+  // Check cache first
+  const cached = PRICE_CACHE.get(symbol);
+  if (cached && Date.now() - cached.fetchedAt < PRICE_CACHE_TTL_MS) {
+    return cached.usdPrice;
+  }
+
+  const apiKey = getAlchemyApiKey();
+  if (!apiKey) {
+    return undefined;
+  }
+
+  try {
+    const url = `https://api.g.alchemy.com/prices/v1/${apiKey}/tokens/by-symbol?symbols=${symbol}`;
+    const result = await axios.get(url, { timeout: 10 * 1000 }).then((response) => response.data);
+
+    const tokenData = result?.data?.[0];
+    const usdPrice = tokenData?.prices?.[0]?.value;
+    if (usdPrice) {
+      const price = Number(usdPrice);
+      PRICE_CACHE.set(symbol, { usdPrice: price, fetchedAt: Date.now() });
+      return price;
+    }
+  } catch (error) {
+    logger.error("prices", `Failed to fetch price from Alchemy for ${symbol}: ${error}`);
+  }
+
+  return undefined;
+};
+
+const currencyToSymbol = (currencyAddress: string): string | undefined => {
+  if (
+    [
+      Sdk.Common.Addresses.Native[config.chainId],
+      Sdk.Common.Addresses.WNative[config.chainId],
+    ].includes(currencyAddress)
+  ) {
+    return "ETH";
+  }
+  if (Sdk.Common.Addresses.Usdc[config.chainId]?.includes(currencyAddress)) {
+    return "USDC";
+  }
+  return undefined;
+};
+
 export const getUpstreamUSDPrice = async (
   currencyAddress: string,
   timestamp: number
@@ -31,6 +86,44 @@ export const getUpstreamUSDPrice = async (
     const date = new Date(timestamp * 1000);
     const truncatedTimestamp = Math.floor(date.valueOf() / 1000);
 
+    // Try Alchemy Prices API first (with 1-minute cache)
+    const symbol = currencyToSymbol(currencyAddress);
+    if (symbol) {
+      const usdPrice = await fetchPriceFromAlchemy(symbol);
+      if (usdPrice) {
+        const value = parseUnits(usdPrice.toFixed(USD_DECIMALS), USD_DECIMALS).toString();
+
+        await idb.none(
+          `
+            INSERT INTO usd_prices (
+              currency,
+              timestamp,
+              value,
+              provider
+            ) VALUES (
+              $/currency/,
+              date_trunc('day', to_timestamp($/timestamp/)),
+              $/value/,
+              $/provider/
+            ) ON CONFLICT DO NOTHING
+          `,
+          {
+            currency: toBuffer(currencyAddress),
+            timestamp: truncatedTimestamp,
+            value,
+            provider: CurrenciesPriceProvider.COINGECKO,
+          }
+        );
+
+        return {
+          currency: currencyAddress,
+          timestamp: truncatedTimestamp,
+          value,
+        };
+      }
+    }
+
+    // Fallback: CoinGecko for other currencies
     const currency = await getCurrency(currencyAddress);
     const coingeckoCurrencyId = currency?.metadata?.coingeckoCurrencyId;
 
