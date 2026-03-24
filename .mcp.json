@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "nft-data-hub": {
+      "command": "node",
+      "args": ["/Users/dachao/Documents/Dev/reservoir-indexer-public/packages/mcp-server/dist/index.js"],
+      "env": {
+        "NFT_DATA_HUB_API_URL": "http://localhost:3001"
+      }
+    }
+  }
+}
