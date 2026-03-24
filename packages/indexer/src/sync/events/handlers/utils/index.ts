@@ -3,6 +3,7 @@ import { AddressZero } from "@ethersproject/constants";
 import _ from "lodash";
 
 import { concat } from "@/common/utils";
+import { isCollectionFilterEnabled, isContractEnabled } from "@/config/collections";
 import { EventKind, EventSubKind } from "@/events-sync/data";
 import {
   assignMintCommentToFillEvents,
@@ -145,6 +146,15 @@ export const initOnChainData = (): OnChainData => ({
 
 // Process on-chain data (save to db, trigger any further processes, ...)
 export const processOnChainData = async (data: OnChainData, backfill?: boolean) => {
+  // Filter fill events by collection whitelist — skip fills for non-whitelisted NFT contracts
+  if (isCollectionFilterEnabled()) {
+    const filterFills = (events: es.fills.Event[]) =>
+      events.filter((e) => !e.contract || isContractEnabled(e.contract));
+    data.fillEvents = filterFills(data.fillEvents);
+    data.fillEventsPartial = filterFills(data.fillEventsPartial);
+    data.fillEventsOnChain = filterFills(data.fillEventsOnChain);
+  }
+
   // Post-process fill events
 
   const allFillEvents = concat(data.fillEvents, data.fillEventsPartial, data.fillEventsOnChain);
