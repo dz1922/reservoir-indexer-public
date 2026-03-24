@@ -1,11 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import { DataProvider } from "@nft-data-hub/adapter";
-import { summarizeEvents, summarizeCollectionStats } from "../utils/summary-generator";
+import { ApiClient } from "./api-client";
 
-export function createMcpServer(provider: DataProvider): McpServer {
+export function createMcpServer(apiUrl: string): McpServer {
+  const api = new ApiClient(apiUrl);
+
   const server = new McpServer({
     name: "nft-data-hub",
     version: "0.0.1",
@@ -28,31 +28,26 @@ export function createMcpServer(provider: DataProvider): McpServer {
       const result: Record<string, unknown> = {};
 
       if (sections.includes("metadata")) {
-        result.item = await provider.getItem(collection, tokenId);
+        const res = await api.get(`/api/v1/collections/${collection}/tokens/${tokenId}`);
+        result.item = res.data;
       }
 
       if (sections.includes("listings")) {
-        result.listings = await provider.getListings(collection, {
-          tokenId,
-          limit: 5,
-          sortDirection: "asc",
-        });
+        const res = await api.get(`/api/v1/tokens/${collection}/${tokenId}/listings?limit=5`);
+        result.listings = res.data;
       }
 
       if (sections.includes("bids")) {
-        result.bids = await provider.getBids(collection, {
-          tokenId,
-          limit: 5,
-          sortDirection: "desc",
-        });
+        const res = await api.get(`/api/v1/tokens/${collection}/${tokenId}/bids?limit=5`);
+        result.bids = res.data;
       }
 
       if (sections.includes("recent_sales")) {
-        result.recentSales = await provider.getEvents(collection, {
-          tokenId,
-          type: "sale",
-          limit: 5,
-        });
+        const res = await api.get(
+          `/api/v1/tokens/${collection}/${tokenId}/events?type=sale&limit=5`
+        );
+        result.recentSales = res.data;
+        result.recentSalesSummary = res.summary;
       }
 
       return {
@@ -77,25 +72,19 @@ export function createMcpServer(provider: DataProvider): McpServer {
       const result: Record<string, unknown> = {};
 
       if (sections.includes("stats")) {
-        const stats = await provider.getCollectionStats(collection);
-        result.stats = stats;
-        if (stats) {
-          result.statsSummary = summarizeCollectionStats(stats, collection);
-        }
+        const res = await api.get(`/api/v1/collections/${collection}`);
+        result.stats = res.data;
+        result.statsSummary = res.summary;
       }
 
       if (sections.includes("floor_listings")) {
-        result.floorListings = await provider.getListings(collection, {
-          limit: 5,
-          sortDirection: "asc",
-        });
+        const res = await api.get(`/api/v1/collections/${collection}/listings?limit=5`);
+        result.floorListings = res.data;
       }
 
       if (sections.includes("top_bids")) {
-        result.topBids = await provider.getBids(collection, {
-          limit: 5,
-          sortDirection: "desc",
-        });
+        const res = await api.get(`/api/v1/collections/${collection}/bids?limit=5`);
+        result.topBids = res.data;
       }
 
       return {
@@ -118,19 +107,20 @@ export function createMcpServer(provider: DataProvider): McpServer {
       limit: z.number().optional().describe("Max results (default 20, max 100)"),
     },
     async ({ collection, tokenId, type, limit }) => {
-      const events = await provider.getEvents(collection, {
-        tokenId,
-        type: type ?? undefined,
-        limit: Math.min(limit ?? 20, 100),
-      });
+      const l = Math.min(limit ?? 20, 100);
+      const typeParam = type ? `&type=${type}` : "";
 
-      const summary = summarizeEvents(events, collection);
+      const path = tokenId
+        ? `/api/v1/tokens/${collection}/${tokenId}/events?limit=${l}${typeParam}`
+        : `/api/v1/collections/${collection}/events?limit=${l}${typeParam}`;
+
+      const res = await api.get(path);
 
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ events, summary }, null, 2),
+            text: JSON.stringify({ events: res.data, summary: res.summary }, null, 2),
           },
         ],
       };
@@ -143,21 +133,13 @@ export function createMcpServer(provider: DataProvider): McpServer {
     "List all NFT collections currently supported by this data hub",
     { _unused: z.string().optional().describe("No parameters needed") },
     async () => {
-      const collections = await provider.getSupportedCollections();
+      const res = await api.get("/api/v1/collections");
+
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(
-              {
-                collections,
-                summary: `${collections.length} collection(s) available: ${collections
-                  .map((c) => c.name || c.id)
-                  .join(", ")}`,
-              },
-              null,
-              2
-            ),
+            text: JSON.stringify({ collections: res.data, summary: res.summary }, null, 2),
           },
         ],
       };
@@ -170,12 +152,7 @@ export function createMcpServer(provider: DataProvider): McpServer {
     "Get details for multiple NFT tokens in a single call (max 20). Useful for comparing tokens.",
     {
       items: z
-        .array(
-          z.object({
-            collection: z.string(),
-            tokenId: z.string(),
-          })
-        )
+        .array(z.object({ collection: z.string(), tokenId: z.string() }))
         .max(20)
         .describe("Array of {collection, tokenId} pairs (max 20)"),
       include: z
@@ -191,23 +168,18 @@ export function createMcpServer(provider: DataProvider): McpServer {
           const result: Record<string, unknown> = { collection, tokenId };
 
           if (sections.includes("metadata")) {
-            result.item = await provider.getItem(collection, tokenId);
+            const res = await api.get(`/api/v1/collections/${collection}/tokens/${tokenId}`);
+            result.item = res.data;
           }
 
           if (sections.includes("listings")) {
-            result.listings = await provider.getListings(collection, {
-              tokenId,
-              limit: 3,
-              sortDirection: "asc",
-            });
+            const res = await api.get(`/api/v1/tokens/${collection}/${tokenId}/listings?limit=3`);
+            result.listings = res.data;
           }
 
           if (sections.includes("bids")) {
-            result.bids = await provider.getBids(collection, {
-              tokenId,
-              limit: 3,
-              sortDirection: "desc",
-            });
+            const res = await api.get(`/api/v1/tokens/${collection}/${tokenId}/bids?limit=3`);
+            result.bids = res.data;
           }
 
           return result;
@@ -221,12 +193,4 @@ export function createMcpServer(provider: DataProvider): McpServer {
   );
 
   return server;
-}
-
-export async function startMcpServer(provider: DataProvider): Promise<void> {
-  const server = createMcpServer(provider);
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  // eslint-disable-next-line no-console
-  console.log("MCP Server started on stdio");
 }

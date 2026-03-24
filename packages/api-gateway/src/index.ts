@@ -9,11 +9,9 @@ import { createTokensRouter } from "./rest/routes/tokens";
 import { createOrdersRouter } from "./rest/routes/orders";
 import { createEventsRouter } from "./rest/routes/events";
 import { errorHandler } from "./rest/middleware/error-handler";
-import { startMcpServer } from "./mcp/server";
 
 const PORT = Number(process.env.API_GATEWAY_PORT || 3001);
 const DATABASE_URL = process.env.DATABASE_URL;
-const MODE = process.env.API_GATEWAY_MODE || "rest"; // "rest" | "mcp" | "both"
 
 if (!DATABASE_URL) {
   console.error("DATABASE_URL is required");
@@ -27,18 +25,16 @@ const provider = new ReservoirDataProvider({
   collections: registry.getAll(),
 });
 
-async function startRestServer(): Promise<void> {
+async function main(): Promise<void> {
   const app = express();
 
   app.use(cors());
   app.use(express.json());
 
-  // Health check
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
 
-  // REST API routes
   app.use("/api/v1/collections", createCollectionsRouter(provider));
   app.use("/api/v1", createTokensRouter(provider));
   app.use("/api/v1", createOrdersRouter(provider));
@@ -47,32 +43,18 @@ async function startRestServer(): Promise<void> {
   app.use(errorHandler);
 
   app.listen(PORT, () => {
-    console.log(`NFT Data Hub API Gateway running on port ${PORT}`);
-    console.log(`  REST API: http://localhost:${PORT}/api/v1`);
-    console.log(`  Health:   http://localhost:${PORT}/health`);
+    console.log(`NFT Data Hub REST API running on port ${PORT}`);
+    console.log(`  API:    http://localhost:${PORT}/api/v1`);
+    console.log(`  Health: http://localhost:${PORT}/health`);
+    console.log(
+      `  Collections: ${
+        registry
+          .getEnabled()
+          .map((c) => c.id)
+          .join(", ") || "none"
+      }`
+    );
   });
-}
-
-async function main(): Promise<void> {
-  console.log(`Starting API Gateway (mode=${MODE})...`);
-  console.log(
-    `Supported collections: ${
-      registry
-        .getEnabled()
-        .map((c) => c.id)
-        .join(", ") || "none"
-    }`
-  );
-
-  if (MODE === "mcp") {
-    await startMcpServer(provider);
-  } else if (MODE === "both") {
-    await startRestServer();
-    // MCP on stdio would conflict with REST logging; run separately
-    console.log("Note: MCP server should be run separately with API_GATEWAY_MODE=mcp");
-  } else {
-    await startRestServer();
-  }
 }
 
 main().catch((err) => {
