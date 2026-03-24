@@ -36,12 +36,19 @@ export class ReservoirDataProvider implements DataProvider {
     this.collections = config.collections;
   }
 
+  // Reservoir stores collection IDs in lowercase; normalize all inputs
+  private normalizeCollection(collection: string): string {
+    return collection.toLowerCase();
+  }
+
   async getItem(collection: string, tokenId: string): Promise<Item | null> {
+    collection = this.normalizeCollection(collection);
     const row = await queryToken(this.db, collection, tokenId);
     return row ? mapTokenToItem(row) : null;
   }
 
   async getItems(collection: string, opts?: PaginationOpts): Promise<Item[]> {
+    collection = this.normalizeCollection(collection);
     const limit = opts?.limit ?? 20;
     const offset = opts?.offset ?? 0;
     const rows = await queryTokens(this.db, collection, limit, offset);
@@ -49,6 +56,7 @@ export class ReservoirDataProvider implements DataProvider {
   }
 
   async getEvents(collection: string, opts?: EventFilterOpts): Promise<MarketEvent[]> {
+    collection = this.normalizeCollection(collection);
     const types = opts?.type ? (Array.isArray(opts.type) ? opts.type : [opts.type]) : undefined;
 
     const rows = await queryEvents(this.db, {
@@ -65,6 +73,7 @@ export class ReservoirDataProvider implements DataProvider {
   }
 
   async getListings(collection: string, opts?: OrderFilterOpts): Promise<Order[]> {
+    collection = this.normalizeCollection(collection);
     const rows = await queryListings(this.db, collection, {
       tokenId: opts?.tokenId,
       limit: opts?.limit ?? 20,
@@ -76,6 +85,7 @@ export class ReservoirDataProvider implements DataProvider {
   }
 
   async getBids(collection: string, opts?: OrderFilterOpts): Promise<Order[]> {
+    collection = this.normalizeCollection(collection);
     const rows = await queryBids(this.db, collection, {
       tokenId: opts?.tokenId,
       limit: opts?.limit ?? 20,
@@ -87,11 +97,13 @@ export class ReservoirDataProvider implements DataProvider {
   }
 
   async getFloorPrice(collection: string): Promise<Price | null> {
+    collection = this.normalizeCollection(collection);
     const stats = await this.getCollectionStats(collection);
     return stats?.floorAsk ?? null;
   }
 
   async getCollectionStats(collection: string): Promise<CollectionStats | null> {
+    collection = this.normalizeCollection(collection);
     const [statsRow, lastSaleRow] = await Promise.all([
       queryCollectionStats(this.db, collection),
       queryLastSale(this.db, collection),
